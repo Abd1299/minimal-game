@@ -1,0 +1,9 @@
+{
+  "name": "Hyderabad Surfers: Charminar Dash",
+  "short_name": "HyderabadSurfers",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a0f1d",
+  "theme_color": "#f59e0b",
+  "orientation": "portrait"
+}
