@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Hyderabad Surfers: Charminar Dash (Realistic Edition)</title>
+  <style>
+    * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+    
+    /* HUD UI */
+    #hud {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
+      padding: 24px; box-sizing: border-box; z-index: 10;
+    }
+    .top-bar { display: flex; justify-content: space-between; align-items: flex-start; }
+    .score-box {
+      background: rgba(10, 15, 30, 0.65);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      padding: 12px 24px; border-radius: 16px; color: #fff;
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+    .score-title { font-size: 11px; color: #fbbf24; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
+    .score-val { font-size: 32px; font-weight: 900; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
+    .multiplier-badge { background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; font-weight: 900; font-size: 14px; padding: 4px 10px; border-radius: 20px; margin-top: 4px; display: inline-block; }
+
+    /* OVERLAYS */
+    .overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(circle at center, rgba(15, 23, 42, 0.6) 0%, rgba(5, 8, 16, 0.95) 100%);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      z-index: 20; color: #fff; text-align: center; padding: 20px;
+    }
+    .game-title { font-size: 48px; font-weight: 900; background: linear-gradient(135deg, #f59e0b, #ef4444, #38bdf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 3px; filter: drop-shadow(0 4px 12px rgba(245, 158, 11, 0.3)); }
+    .game-subtitle { font-size: 14px; color: #94a3b8; margin-bottom: 36px; letter-spacing: 2px; font-weight: 600; }
+    
+    .btn {
+      background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; border: none;
+      padding: 18px 48px; font-size: 18px; font-weight: 800; border-radius: 50px;
+      cursor: pointer; pointer-events: auto; box-shadow: 0 10px 30px rgba(245, 158, 11, 0.4);
+      transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275); text-transform: uppercase; letter-spacing: 1.5px;
+    }
+    .btn:hover { transform: translateY(-3px) scale(1.03); box-shadow: 0 15px 35px rgba(245, 158, 11, 0.6); }
+
+    .controls-hint { margin-top: 40px; color: #64748b; font-size: 12px; display: flex; gap: 20px; letter-spacing: 0.5px; }
+    .key { background: rgba(255, 255, 255, 0.1); color: #f8fafc; padding: 3px 8px; border-radius: 6px; font-weight: 700; border: 1px solid rgba(255,255,255,0.15); }
+  </style>
+  
+  <!-- Three.js & Post-Processing Stack -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="top-bar">
+      <div class="score-box">
+        <div class="score-title">Osmania Biscuits</div>
+        <div class="score-val" id="coin-count">0</div>
+      </div>
+      <div class="score-box" style="text-align: right;">
+        <div class="score-title">Distance</div>
+        <div class="score-val" id="score-val">0m</div>
+        <div class="multiplier-badge" id="mult-badge">x1</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- START OVERLAY -->
+  <div class="overlay" id="start-menu">
+    <div class="game-title">HYDERABAD SURFERS</div>
+    <div class="game-subtitle">PHOTOREALISTIC OLD CITY RUN</div>
+    <button class="btn" id="start-btn">START RUN</button>
+    <div class="controls-hint">
+      <span><span class="key">A</span> / <span class="key">D</span> or <span class="key">←</span> <span class="key">→</span> : Switch Lanes</span>
+      <span><span class="key">W</span> / <span class="key">↑</span> : Jump</span>
+      <span><span class="key">S</span> / <span class="key">↓</span> : Slide</span>
+    </div>
+  </div>
+
+  <!-- GAME OVER OVERLAY -->
+  <div class="overlay" id="gameover-menu" style="display: none;">
+    <div class="game-title" style="background: linear-gradient(135deg, #ef4444, #f59e0b); -webkit-background-clip: text;">CRASHED!</div>
+    <div class="game-subtitle" id="final-stats">Distance: 0m</div>
+    <button class="btn" id="restart-btn">TRY AGAIN</button>
+  </div>
+
+  <script>
+    // --- AUDIO SYNTHESIZER ---
+    const AudioEngine = {
+      ctx: null,
+      init() { if(!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
+      playCoin() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+        osc.type = 'sine'; osc.frequency.setValueAtTime(1046.5, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1318.5, this.ctx.currentTime + 0.08);
+        g.gain.setValueAtTime(0.15, this.ctx.currentTime);
+        g.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+        osc.connect(g); g.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.08);
+      },
+      playJump() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(180, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(450, this.ctx.currentTime + 0.12);
+        g.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        g.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+        osc.connect(g); g.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.12);
+      },
+      playCrash() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(110, this.ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(30, this.ctx.currentTime + 0.35);
+        g.gain.setValueAtTime(0.4, this.ctx.currentTime);
+        g.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.35);
+        osc.connect(g); g.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.35);
+      }
+    };
+
+    // --- GAME ENGINE & SETUP ---
+    let scene, camera, renderer, composer;
+    let playerGroup, playerMesh;
+    let isPlaying = false, isGameOver = false;
+    let score = 0, coins = 0, speed = 30;
+    
+    const LANES = [-2.6, 0, 2.6];
+    let currentLane = 1, targetX = 0;
+    let posY = 0, velY = 0;
+    const GRAVITY = -45, JUMP_FORCE = 16;
+    let isGrounded = true, isSliding = false, slideTimer = 0;
+
+    // PROCEDURAL TEXTURE GENERATOR (ASPHALT)
+    function createAsphaltTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512; canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#1e293b'; ctx.fillRect(0, 0, 512, 512);
+      for(let i = 0; i < 20000; i++) {
+        ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.05)';
+        ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+      }
+      // Lane markings
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(166, 0, 8, 512); ctx.fillRect(338, 0, 8, 512);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(1, 10);
+      return texture;
+    }
+
+    // --- OBJECT POOLING SYSTEM ---
+    class GameObjectPool {
+      constructor() { this.pools = {}; }
+      createPool(key, factory, initialSize = 10) {
+        this.pools[key] = { factory, available: [], active: [] };
+        for(let i=0; i<initialSize; i++) {
+          const obj = factory(); obj.visible = false; scene.add(obj);
+          this.pools[key].available.push(obj);
+        }
+      }
+      get(key) {
+        const pool = this.pools[key]; if(!pool) return null;
+        let obj = pool.available.length > 0 ? pool.available.pop() : pool.factory();
+        obj.visible = true; pool.active.push(obj); return obj;
+      }
+      release(key, obj) {
+        const pool = this.pools[key]; if(!pool) return;
+        const idx = pool.active.indexOf(obj);
+        if(idx !== -1) { pool.active.splice(idx, 1); obj.visible = false; pool.available.push(obj); }
+      }
+    }
+    const poolManager = new GameObjectPool();
+
+    // --- REALISTIC PROCEDURAL MESHES ---
+    function createPlayerModel() {
+      const group = new THREE.Group();
+      
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0xb5784c, roughness: 0.6 });
+      const shirtMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.1 });
+      const shortsMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 });
+      const shoeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2 });
+
+      // Torso
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.9, 0.4), shirtMat);
+      torso.position.y = 1.15; torso.castShadow = true; group.add(torso);
+
+      // Head
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.48, 0.48), skinMat);
+      head.position.y = 1.95; head.castShadow = true; group.add(head);
+
+      // Limbs
+      group.legs = []; group.arms = [];
+      const legGeo = new THREE.BoxGeometry(0.24, 0.7, 0.24);
+      
+      const leftLeg = new THREE.Mesh(legGeo, shortsMat);
+      leftLeg.position.set(-0.2, 0.45, 0); leftLeg.castShadow = true; group.add(leftLeg); group.legs.push(leftLeg);
+
+      const rightLeg = new THREE.Mesh(legGeo, shortsMat);
+      rightLeg.position.set(0.2, 0.45, 0); rightLeg.castShadow = true; group.add(rightLeg); group.legs.push(rightLeg);
+
+      const armGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2);
+      const leftArm = new THREE.Mesh(armGeo, skinMat);
+      leftArm.position.set(-0.5, 1.15, 0); leftArm.castShadow = true; group.add(leftArm); group.arms.push(leftArm);
+
+      const rightArm = new THREE.Mesh(armGeo, skinMat);
+      rightArm.position.set(0.5, 1.15, 0); rightArm.castShadow = true; group.add(rightArm); group.arms.push(rightArm);
+
+      // Backpack
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.65, 0.28), new THREE.MeshStandardMaterial({color: 0xef4444, roughness: 0.4}));
+      pack.position.set(0, 1.2, -0.3); pack.castShadow = true; group.add(pack);
+
+      return group;
+    }
+
+    function createAutoRickshaw() {
+      const auto = new THREE.Group();
+      const yellowMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.2, metalness: 0.3 });
+      const blackMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+      const greenMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.3 });
+
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 2.6), greenMat);
+      base.position.y = 0.8; base.castShadow = true; auto.add(base);
+
+      const top = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.9, 1.8), yellowMat);
+      top.position.set(0, 1.85, -0.3); top.castShadow = true; auto.add(top);
+
+      // Headlight with Bloom
+      const lightGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.1, 16);
+      const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const light = new THREE.Mesh(lightGeo, lightMat);
+      light.rotation.x = Math.PI/2; light.position.set(0, 0.9, 1.3); auto.add(light);
+
+      return auto;
+    }
+
+    function createRTCBus() {
+      const bus = new THREE.Group();
+      const redMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.3, metalness: 0.2 });
+      const glassMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, metalness: 0.9 });
+
+      const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.8, 7.5), redMat);
+      body.position.y = 1.6; body.castShadow = true; bus.add(body);
+
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(2.01, 1.0, 0.1), glassMat);
+      wind.position.set(0, 2.2, 3.76); bus.add(wind);
+
+      return bus;
+    }
+
+    function createBiscuit() {
+      const geo = new THREE.CylinderGeometry(0.35, 0.35, 0.1, 24);
+      const mat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.5, roughness: 0.2 });
+      const coin = new THREE.Mesh(geo, mat);
+      coin.rotation.x = Math.PI / 2; coin.castShadow = true;
+      return coin;
+    }
+
+    function createTrackChunk() {
+      const chunk = new THREE.Group();
+      const roadMat = new THREE.MeshStandardMaterial({ map: createAsphaltTexture(), roughness: 0.7 });
+      const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9 });
+
+      const road = new THREE.Mesh(new THREE.PlaneGeometry(9, 40), roadMat);
+      road.rotation.x = -Math.PI / 2; road.receiveShadow = true; chunk.add(road);
+
+      const sideL = new THREE.Mesh(new THREE.BoxGeometry(2, 0.4, 40), sidewalkMat);
+      sideL.position.set(-5.5, 0.2, 0); sideL.receiveShadow = true; chunk.add(sideL);
+
+      const sideR = sideL.clone(); sideR.position.x = 5.5; chunk.add(sideR);
+
+      // Hyderabadi Bazaar Buildings
+      const bldgMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+      const bldgL = new THREE.Mesh(new THREE.BoxGeometry(4, 14, 38), bldgMat);
+      bldgL.position.set(-8.5, 7, 0); chunk.add(bldgL);
+      const bldgR = bldgL.clone(); bldgR.position.x = 8.5; chunk.add(bldgR);
+
+      return chunk;
+    }
+
+    // --- INITIALIZATION ---
+    function init() {
+      const container = document.getElementById('canvas-container');
+      
+      // Scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0a0f1d);
+      scene.fog = new THREE.FogExp2(0x0a0f1d, 0.007);
+
+      // Camera
+      camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 200);
+      camera.position.set(0, 4.5, 7);
+      camera.rotation.x = -0.22;
+
+      // Renderer (AgX / ACES Tone Mapping)
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      container.appendChild(renderer.domElement);
+
+      // Post-Processing Composer (Unreal Bloom)
+      composer = new THREE.EffectComposer(renderer);
+      composer.addPass(new THREE.RenderPass(scene, camera));
+      
+      const bloomPass = new THREE.UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        0.45, // Bloom intensity
+        0.4,  // Radius
+        0.85  // Threshold
+      );
+      composer.addPass(bloomPass);
+
+      // Cinematic Golden Hour Lighting
+      const ambientLight = new THREE.AmbientLight(0x38bdf8, 0.4);
+      scene.add(ambientLight);
+
+      const sunLight = new THREE.DirectionalLight(0xf59e0b, 1.8);
+      sunLight.position.set(25, 45, 20);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 2048; sunLight.shadow.mapSize.height = 2048;
+      sunLight.shadow.camera.near = 0.5; sunLight.shadow.camera.far = 150;
+      scene.add(sunLight);
+
+      // Create Player
+      playerGroup = new THREE.Group();
+      playerMesh = createPlayerModel();
+      playerGroup.add(playerMesh);
+      scene.add(playerGroup);
+
+      // Setup Pools
+      poolManager.createPool('chunk', createTrackChunk, 6);
+      poolManager.createPool('auto', createAutoRickshaw, 8);
+      poolManager.createPool('bus', createRTCBus, 5);
+      poolManager.createPool('biscuit', createBiscuit, 50);
+
+      // Spawn Initial Road
+      for(let i = 0; i < 5; i++) {
+        const chunk = poolManager.get('chunk');
+        chunk.position.z = -i * 40;
+      }
+
+      window.addEventListener('resize', onWindowResize);
+      setupControls();
+
+      document.getElementById('start-btn').addEventListener('click', () => {
+        AudioEngine.init();
+        document.getElementById('start-menu').style.display = 'none';
+        startGame();
+      });
+
+      document.getElementById('restart-btn').addEventListener('click', () => {
+        document.getElementById('gameover-menu').style.display = 'none';
+        startGame();
+      });
+
+      animate(0);
+    }
+
+    // --- CONTROLS ---
+    function setupControls() {
+      window.addEventListener('keydown', (e) => {
+        if(!isPlaying) return;
+        if ((e.key === 'ArrowLeft' || e.key === 'a') && currentLane > 0) currentLane--;
+        if ((e.key === 'ArrowRight' || e.key === 'd') && currentLane < 2) currentLane++;
+        if ((e.key === 'ArrowUp' || e.key === 'w') && isGrounded) {
+          velY = JUMP_FORCE; isGrounded = false; AudioEngine.playJump();
+        }
+        if ((e.key === 'ArrowDown' || e.key === 's') && !isSliding) {
+          isSliding = true; slideTimer = 0.55;
+          if(!isGrounded) velY = -JUMP_FORCE * 1.5;
+        }
+        targetX = LANES[currentLane];
+      });
+
+      let touchStartX = 0, touchStartY = 0;
+      window.addEventListener('touchstart', e => {
+        touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
+      });
+      window.addEventListener('touchend', e => {
+        if(!isPlaying) return;
+        let dx = e.changedTouches[0].clientX - touchStartX;
+        let dy = e.changedTouches[0].clientY - touchStartY;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          if (dx < -30 && currentLane > 0) currentLane--;
+          else if (dx > 30 && currentLane < 2) currentLane++;
+        } else {
+          if (dy < -30 && isGrounded) { velY = JUMP_FORCE; isGrounded = false; AudioEngine.playJump(); }
+          else if (dy > 30 && !isSliding) { isSliding = true; slideTimer = 0.55; }
+        }
+        targetX = LANES[currentLane];
+      });
+    }
+
+    // --- GAME LOOP ---
+    let lastTime = 0, spawnTimer = 0;
+
+    function startGame() {
+      isPlaying = true; isGameOver = false;
+      score = 0; coins = 0; speed = 30; currentLane = 1; targetX = 0;
+      posY = 0; velY = 0; isGrounded = true;
+      playerGroup.position.set(0,0,0);
+    }
+
+    function triggerGameOver() {
+      isPlaying = false; isGameOver = true; AudioEngine.playCrash();
+      document.getElementById('final-stats').innerText = `Biscuits Collected: ${coins} | Distance: ${Math.floor(score)}m`;
+      document.getElementById('gameover-menu').style.display = 'flex';
+    }
+
+    function animate(time) {
+      requestAnimationFrame(animate);
+      const delta = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+
+      if(isPlaying) {
+        score += speed * delta; speed += delta * 0.18;
+        document.getElementById('score-val').innerText = `${Math.floor(score)}m`;
+        document.getElementById('coin-count').innerText = coins;
+
+        // Snappy Lane Switch
+        playerGroup.position.x += (targetX - playerGroup.position.x) * 0.28;
+        playerGroup.rotation.z = (playerGroup.position.x - targetX) * -0.1;
+
+        // Jump & Gravity Physics
+        posY += velY * delta; velY += GRAVITY * delta;
+        if (posY <= 0) { posY = 0; velY = 0; isGrounded = true; }
+        playerGroup.position.y = posY;
+
+        // Slide Scale Compression
+        if(isSliding) {
+          slideTimer -= delta; playerMesh.scale.set(1, 0.5, 1);
+          if(slideTimer <= 0) { isSliding = false; playerMesh.scale.set(1, 1, 1); }
+        }
+
+        // Striding Animations
+        const runAngle = Math.sin(time * 0.018) * 0.85;
+        if(playerMesh.legs) {
+          playerMesh.legs[0].rotation.x = runAngle; playerMesh.legs[1].rotation.x = -runAngle;
+          playerMesh.arms[0].rotation.x = -runAngle; playerMesh.arms[1].rotation.x = runAngle;
+        }
+
+        // Track Chunk Movement
+        poolManager.pools['chunk'].active.forEach(chunk => {
+          chunk.position.z += speed * delta;
+          if(chunk.position.z > 20) chunk.position.z -= 200;
+        });
+
+        // Spawning Hazards & Biscuits
+        spawnTimer += delta;
+        if(spawnTimer > 1.1) {
+          spawnTimer = 0;
+          const lane = LANES[Math.floor(Math.random() * 3)];
+          const type = Math.random() > 0.4 ? 'auto' : 'bus';
+          const obs = poolManager.get(type);
+          if(obs) obs.position.set(lane, 0, -120);
+
+          for(let b=0; b<4; b++) {
+            const bisc = poolManager.get('biscuit');
+            if(bisc) bisc.position.set(lane, 0.8, -100 - (b * 2.5));
+          }
+        }
+
+        // Obstacles Collision Update
+        ['auto', 'bus'].forEach(key => {
+          poolManager.pools[key].active.forEach(obs => {
+            obs.position.z += speed * delta;
+            const distZ = Math.abs(obs.position.z - playerGroup.position.z);
+            const distX = Math.abs(obs.position.x - playerGroup.position.x);
+            if(distZ < 1.4 && distX < 0.85 && posY < 1.4) triggerGameOver();
+            if(obs.position.z > 10) poolManager.release(key, obs);
+          });
+        });
+
+        // Coin Pickup Update
+        poolManager.pools['biscuit'].active.forEach(bisc => {
+          bisc.position.z += speed * delta;
+          bisc.rotation.z += 3.5 * delta;
+          if(bisc.position.distanceTo(playerGroup.position) < 1.2) {
+            coins++; AudioEngine.playCoin(); poolManager.release('biscuit', bisc);
+          }
+          if(bisc.position.z > 10) poolManager.release('biscuit', bisc);
+        });
+      }
+
+      composer.render();
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
